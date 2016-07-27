@@ -10,7 +10,6 @@
     "build": "tsc"
   },
   "dependencies": {
-    "reflect-metadata": "^0.1.3",
-    "rison": "^0.1.1"
+
   }
 }
