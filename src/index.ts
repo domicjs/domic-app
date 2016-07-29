@@ -189,18 +189,12 @@ export class App extends Eventable {
 
     screen.deps.forEach(type => this.resolver.require(type))
 
-    // this.future_services = new Map<Constructor<Service>, Service>()
-    // this.computeDependencies(screen as Screen)
-
-    // FIXME : initialize the services that were not initialised before.
-
-    // FIXME, the changes worked, so now we're commiting them into the App.
-
     let promises: Thenable<any>[] = []
-    this.resolver.services.forEach(serv => {
+    this.resolver.future_services.forEach(serv => {
       if (serv.initPromise) promises.push(serv.initPromise)
     })
 
+    // wait on all the promises before transitionning to a new state.
     Promise.all(promises).then(res => {
       this.resolver.commit()
       this.config = this.resolver.configs
@@ -217,7 +211,6 @@ export class App extends Eventable {
       this.resolver = prev_resolver
       console.error(err)
     })
-
 
     return null
   }
