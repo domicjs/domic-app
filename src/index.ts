@@ -1,14 +1,120 @@
 
-import {Eventable, pathget, Atom, VirtualAtom} from 'carbyne'
+import {Eventable, Atom, VirtualAtom} from 'carbyne'
 
-export type Params = {
-
-  [name: string]: any
-
-}
 
 export interface Constructor<S extends Service> {
   new(...a: any[]): S
+}
+
+
+export class ServiceConfig {
+  service: Constructor<Service>
+  params: any[] = []
+
+  constructor(service: Constructor<Service>, ...params: any[]) {
+    this.service = service
+    this.params = params
+  }
+}
+
+
+/**
+ * Resolver helps in service instanciation and destroy
+ */
+export class Resolver {
+
+  services: Map<Constructor<Service>, Service>
+  future_services: Map<Constructor<Service>, Service>
+  configs: Map<Constructor<Service>, ServiceConfig> = new Map<Constructor<Service>, ServiceConfig>()
+  future_configs: Map<Constructor<Service>, ServiceConfig>
+  app: App
+
+  constructor(app: App) {
+    this.app = app
+  }
+
+  /**
+   *
+   */
+  require<S extends Service>(type: Constructor<S>): S {
+    let service = this.future_services.get(type) as S
+
+    if (!service) {
+      let conf = this.future_configs.get(type)
+      if (conf) {
+        // we ignore previous service, since we are being given a new
+        // configuration for him.
+        service = new type(this.app, ...conf.params)
+      } else {
+        service = this.services.get(type) as S
+        if (!service) {
+          // no config, no previously instanciated service, so
+          // we just create one without arguments.
+          service = new type(this.app)
+        }
+      }
+
+      this.future_services.set(type, service)
+    }
+
+    return service
+  }
+
+  /**
+   * Destroy services that won't be used anymore, remove configs of
+   * services that are gone from the services.
+   */
+  commit(): void {
+
+    // merge future_configs into configs
+    this.future_configs.forEach((conf, type) => {
+      this.configs.set(type, conf)
+    })
+
+    // remove services that don't exist in the new ones from all_config
+    // so that this.all_config represents the current global configuration.
+    let gone_services = new Set<Constructor<Service>>()
+    this.configs.forEach((conf, type) => {
+      if (!this.future_services.has(type))
+        gone_services.add(type)
+    })
+
+    gone_services.forEach(type => this.configs.delete(type))
+
+    this.services = this.future_services
+    this.future_services = new Map<Constructor<Service>, Service>()
+  }
+
+  /**
+   * Cancel the change.
+   */
+  rollback(): void {
+    this.future_services = new Map<Constructor<Service>, Service>()
+    this.future_configs = new Map<Constructor<Service>, ServiceConfig>()
+  }
+
+  /**
+   * Prepare the resolver for a new transition.
+   */
+  prepare(services: Map<Constructor<Service>, Service>, ...configs: ServiceConfig[]): void {
+    // Setup the config map
+    this.future_configs = new Map<Constructor<Service>, ServiceConfig>()
+    configs.forEach(conf => this.future_configs.set(conf.service, conf))
+
+    // Only keep the services for which we know there won't be a
+    // reinit.
+    this.services = new Map<Constructor<Service>, Service>()
+    if (services) {
+      services.forEach((service, type) => {
+        if (!this.future_configs.has(type))
+          this.services.set(type, service)
+      })
+    }
+
+    // Prepare the future services.
+    this.future_services = new Map<Constructor<Service>, Service>()
+  }
+
 }
 
 
@@ -20,9 +126,9 @@ export class App extends Eventable {
   public activating = false
 
   public current_screen: Screen = null
-  public current_services = new Map<Constructor<Service>, Service>()
-
-  private future_services = new Map<Constructor<Service>, Service>()
+  public resolver: Resolver = new Resolver(this)
+  public services: Map<Constructor<Service>, Service>
+  public config: Map<Constructor<Service>, ServiceConfig>
 
   // protected active_partials = new Map<Constructor<Partial>, Partial>()
   // protected activating_partials: Map<Constructor<Partial>, Partial> = null
@@ -66,9 +172,7 @@ export class App extends Eventable {
   /**
    *
    */
-  go(s: string, params?: Params): Thenable<any>;
-  go(s: Screen, params?: Params): Thenable<any>;
-  go(screen: Screen|string, params?: Params): Thenable<any> {
+  go(screen: Screen, ...configs: ServiceConfig[]): Thenable<any> {
 
     if (this.activating)
       // Should do some kind of redirect here ?
@@ -76,23 +180,44 @@ export class App extends Eventable {
 
     this.trigger('change:before')
 
-    if (typeof screen === 'string') {
-      screen = new Screen(this) // ????
-    }
-
     this.activating = true
 
-    this.future_services = new Map<Constructor<Service>, Service>()
-    this.computeDependencies(screen as Screen, params)
+    let prev_resolver = this.resolver
+
+    this.resolver = new Resolver(this)
+    this.resolver.prepare(this.services, ...configs)
+
+    screen.deps.forEach(type => this.resolver.require(type))
+
+    // this.future_services = new Map<Constructor<Service>, Service>()
+    // this.computeDependencies(screen as Screen)
 
     // FIXME : initialize the services that were not initialised before.
 
-    this.current_screen = screen as Screen
-    this.current_services = this.future_services
-    this.future_services = null
-    this.activating = false
+    // FIXME, the changes worked, so now we're commiting them into the App.
 
-    this.trigger('change')
+    let promises: Thenable<any>[] = []
+    this.resolver.services.forEach(serv => {
+      if (serv.initPromise) promises.push(serv.initPromise)
+    })
+
+    Promise.all(promises).then(res => {
+      this.resolver.commit()
+      this.config = this.resolver.configs
+      this.services = this.resolver.services
+
+      this.current_screen = screen as Screen
+      this.activating = false
+
+      this.trigger('change')
+
+    }).catch(err => {
+      // cancel activation.
+      this.resolver.rollback()
+      this.resolver = prev_resolver
+      console.error(err)
+    })
+
 
     return null
   }
@@ -100,56 +225,16 @@ export class App extends Eventable {
   /**
    *
    */
-  service(type: Constructor<Service>, params: Params): Service {
-    let service = this.future_services.get(type)
-
-    if (!service) {
-      // first, try to figure out if the service can be reused.
-      let old_serv = this.current_services.get(type)
-      if (old_serv && !old_serv.needsReinit(params))
-        // we can reuse the service
-        service = old_serv
-      else {
-        // we need to instanciate it
-        service = new type(this)
-      }
-
-      this.future_services.set(type, service)
-    }
-
-    return service
+  require(type: Constructor<Service>): Service {
+    return this.resolver.require(type)
   }
-
-  /**
-   * Fill up the future dependencies and try to init them.
-   */
-  protected computeDependencies(newscreen: Screen, params: Params) {
-
-    // For all the services, trigger the reinstancing of the ones who have changed.
-    newscreen.deps.forEach(type => {
-      // for init of services. Will reinstanciate thos that are not valid
-      // for the new parameters.
-      this.service(type, params)
-    })
-
-  }
-
-  ////////////////////////////////////////////////////////////////////////////
-  /// DECORATORS
-  ////////////////////////////////////////////////////////////////////////////
-
-  // params(...props: string[]) {
-  //   return function decorate(p: typeof Service) {
-  //     p.__params_check__ = props
-  //   }
-  // }
 
 }
 
 /**
  * A sample app, usable by default
  */
-export var app = new App
+export const app = new App
 
 
 /**
@@ -158,14 +243,12 @@ export var app = new App
 export class Service extends Eventable {
 
   app: App
-  params: Params
+  initPromise: Thenable<any>
   _dependencies: Array<Service> = []
-  _param_names: string[] = []
 
-  constructor(app: App, params: Params) {
+  constructor(app: App) {
     super()
     this.app = app
-    this.params = params
   }
 
   /**
@@ -179,7 +262,7 @@ export class Service extends Eventable {
    * Require another service and put it into the list of dependencies.
    */
   public require<S extends Service>(p: Constructor<S>): S {
-    let serv = this.app.service(p, this.params)
+    let serv = this.app.require(p)
     this._dependencies.push(serv)
     return serv as S
   }
@@ -187,18 +270,10 @@ export class Service extends Eventable {
   /**
    * Override this method to tell when this partial needs to be re-inited.
    */
-  public needsReinit(params: Params): boolean {
+  public needsReinit(): boolean {
 
     for (let r of this._dependencies)
-      if (r.needsReinit(params)) return true
-
-    let chk = this._param_names
-    if (chk && chk.length) {
-      for (let c of chk) {
-        if (pathget(params, c) !== pathget(this.params, c))
-          return true
-      }
-    }
+      if (r.needsReinit()) return true
 
     return false
   }
@@ -208,14 +283,6 @@ export class Service extends Eventable {
    * It is meant to be overridden.
    */
   public onDestroy() {
-
-  }
-
-  /**
-   * Called whenever this service stays alive but sees the parameters
-   * changing.
-   */
-  public onParamChange(params: Params) {
 
   }
 
@@ -332,11 +399,12 @@ export class DisplayBlockAtom extends VirtualAtom {
     if (view === this.current_view && !dep_changed)
       return
 
-    let deps = view.deps.map(cons => this.app.current_services.get(cons))
+    let deps = view.deps.map(cons => this.app.services.get(cons))
     let res = view.fn.apply(null, deps)
 
     this.current_view = view
 
+    // FIXME won't work if changing too fast.
     this.empty().then(() => {
       this.append(res)
     }, e => console.error(e))
