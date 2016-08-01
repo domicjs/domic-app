@@ -1,5 +1,5 @@
 
-import {Eventable, Atom, VirtualAtom, Observable, Observer, DependentObservable} from 'carbyne'
+import {o, O, Eventable, Atom, VirtualAtom, Observable, Observer, DependentObservable} from 'carbyne'
 
 
 export interface Constructor<S extends Service> {
@@ -270,37 +270,14 @@ export class Service extends Eventable {
     return serv as S
   }
 
-  public observe<A, B, C, D, E, F>(a: Observable<A>, b: Observable<B>, c: Observable<C>, d: Observable<D>, e: Observable<E>, f: Observable<F>, cbk: (a: A, b: B, c: C, d: D, e: E, f: F) => any): this;
-  public observe<A, B, C, D, E>(a: Observable<A>, b: Observable<B>, c: Observable<C>, d: Observable<D>, e: Observable<E>, cbk: (a: A, b: B, c: C, d: D, e: E) => any): this;
-  public observe<A, B, C, D>(a: Observable<A>, b: Observable<B>, c: Observable<C>, d: Observable<D>, cbk: (a: A, b: B, c: C, d: D) => any): this;
-  public observe<A, B, C>(a: Observable<A>, b: Observable<B>, c: Observable<C>, cbk: (a: A, b: B, c: C) => any): this;
-  public observe<A, B>(a: Observable<A>, b: Observable<B>, cbk: (a: A, b: B) => any): this;
-  public observe<A>(a: Observable<A>, cbk: (a: A, prop?: string) => any): this;
+  public observe<A, B, C, D, E, F>(a: O<A>, b: O<B>, c: O<C>, d: O<D>, e: O<E>, f: O<F>, cbk: (a: A, b: B, c: C, d: D, e: E, f: F) => any): this;
+  public observe<A, B, C, D, E>(a: O<A>, b: O<B>, c: O<C>, d: O<D>, e: O<E>, cbk: (a: A, b: B, c: C, d: D, e: E) => any): this;
+  public observe<A, B, C, D>(a: O<A>, b: O<B>, c: O<C>, d: O<D>, cbk: (a: A, b: B, c: C, d: D) => any): this;
+  public observe<A, B, C>(a: O<A>, b: O<B>, c: O<C>, cbk: (a: A, b: B, c: C) => any): this;
+  public observe<A, B>(a: O<A>, b: O<B>, cbk: (a: A, b: B) => any): this;
+  public observe<A>(a: O<A>, cbk: (a: A, prop?: string) => any): this;
   public observe(...params: any[]): this {
-    let uninit: Array<() => void> = []
-    let values: Array<any> = []
-    let fn = params[params.length - 1]
-    let obs = params.slice(0, params.length - 1)
-    let len = obs.length
-
-    function change() {
-      if (values.length === len)
-        fn.apply(null, values)
-    }
-
-    obs.forEach((ob: Observable<any>) => {
-      let idx = values.length
-      values.push(undefined)
-
-      uninit.push(ob.addObserver((val, prop) => {
-        values[idx] = val
-        change()
-      }))
-    })
-
-    this.on('destroy', () => uninit.forEach(unalloc => {
-      unalloc()
-    }))
+    this.on('destroy', (o.observe as any)(...params))
     return this
   }
 
