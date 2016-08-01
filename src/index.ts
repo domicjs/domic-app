@@ -1,5 +1,5 @@
 
-import {Eventable, Atom, VirtualAtom} from 'carbyne'
+import {Eventable, Atom, VirtualAtom, Observable, Observer, DependentObservable} from 'carbyne'
 
 
 export interface Constructor<S extends Service> {
@@ -195,7 +195,7 @@ export class App extends Eventable {
     })
 
     // wait on all the promises before transitionning to a new state.
-    Promise.all(promises).then(res => {
+    return Promise.all(promises).then(res => {
       this.resolver.commit()
       this.config = this.resolver.configs
       this.services = this.resolver.services
@@ -209,10 +209,9 @@ export class App extends Eventable {
       // cancel activation.
       this.resolver.rollback()
       this.resolver = prev_resolver
-      console.error(err)
+      this.activating = false
+      return Promise.reject(err)
     })
-
-    return null
   }
 
   /**
@@ -258,6 +257,25 @@ export class Service extends Eventable {
     let serv = this.app.require(p)
     this._dependencies.push(serv)
     return serv as S
+  }
+
+  public observe<A, B, C, D, E, F>(a: Observable<A>, b: Observable<B>, c: Observable<C>, d: Observable<D>, e: Observable<E>, f: Observable<F>, cbk: (a: A, b: B, c: C, d: D, e: E, f: F) => any): this;
+  public observe<A, B, C, D, E>(a: Observable<A>, b: Observable<B>, c: Observable<C>, d: Observable<D>, e: Observable<E>, cbk: (a: A, b: B, c: C, d: D, e: E) => any): this;
+  public observe<A, B, C, D>(a: Observable<A>, b: Observable<B>, c: Observable<C>, d: Observable<D>, cbk: (a: A, b: B, c: C, d: D) => any): this;
+  public observe<A, B, C>(a: Observable<A>, b: Observable<B>, c: Observable<C>, cbk: (a: A, b: B, c: C) => any): this;
+  public observe<A, B>(a: Observable<A>, b: Observable<B>, cbk: (a: A, b: B) => any): this;
+  public observe<A>(a: Observable<A>, cbk: (a: A, prop?: string) => any): this;
+  public observe(...params: any[]): this {
+    let fn = params[params.length - 1]
+    let obs = params.slice(0, params.length - 1)
+    if (obs.length === 1)
+      this.on('destroy', obs[0].addObserver(fn))
+    else if (obs.length > 1) {
+      let dep = new DependentObservable<any>(obs, fn)
+      this.on('destroy', dep.addObserver(fn))
+    }
+    // this.on('destroy', obs.addObserver(cbk))
+    return this
   }
 
   /**
