@@ -80,6 +80,10 @@ export class Resolver {
     })
 
     gone_services.forEach(type => this.configs.delete(type))
+    this.services.forEach((serv, type) => {
+      if (!this.future_services.has(type))
+        serv.destroy()
+    })
 
     this.services = this.future_services
     this.future_services = new Map<Constructor<Service>, Service>()
@@ -174,44 +178,51 @@ export class App extends Eventable {
    */
   go(screen: Screen, ...configs: ServiceConfig[]): Thenable<any> {
 
-    if (this.activating)
-      // Should do some kind of redirect here ?
-      throw new Error(`...`)
+    try {
 
-    this.trigger('change:before')
+      if (this.activating)
+        // Should do some kind of redirect here ?
+        throw new Error(`...`)
 
-    this.activating = true
+      this.trigger('change:before')
 
-    let prev_resolver = this.resolver
+      this.activating = true
 
-    this.resolver = new Resolver(this)
-    this.resolver.prepare(this.services, ...configs)
+      let prev_resolver = this.resolver
 
-    screen.deps.forEach(type => this.resolver.require(type))
+      this.resolver = new Resolver(this)
+      this.resolver.prepare(this.services, ...configs)
 
-    let promises: Thenable<any>[] = []
-    this.resolver.future_services.forEach(serv => {
-      if (serv.initPromise) promises.push(serv.initPromise)
-    })
+      screen.deps.forEach(type => this.resolver.require(type))
 
-    // wait on all the promises before transitionning to a new state.
-    return Promise.all(promises).then(res => {
-      this.resolver.commit()
-      this.config = this.resolver.configs
-      this.services = this.resolver.services
+      let promises: Thenable<any>[] = []
+      this.resolver.future_services.forEach(serv => {
+        if (serv.initPromise) promises.push(serv.initPromise)
+      })
 
-      this.current_screen = screen as Screen
-      this.activating = false
+      // wait on all the promises before transitionning to a new state.
+      return Promise.all(promises).then(res => {
+        this.resolver.commit()
+        this.config = this.resolver.configs
+        this.services = this.resolver.services
 
-      this.trigger('change')
+        this.current_screen = screen as Screen
+        this.activating = false
 
-    }).catch(err => {
-      // cancel activation.
-      this.resolver.rollback()
-      this.resolver = prev_resolver
+        this.trigger('change')
+
+      }).catch(err => {
+        // cancel activation.
+        this.resolver.rollback()
+        this.resolver = prev_resolver
+        this.activating = false
+        return Promise.reject(err)
+      })
+    } catch (err) {
       this.activating = false
       return Promise.reject(err)
-    })
+    }
+
   }
 
   /**
@@ -266,15 +277,30 @@ export class Service extends Eventable {
   public observe<A, B>(a: Observable<A>, b: Observable<B>, cbk: (a: A, b: B) => any): this;
   public observe<A>(a: Observable<A>, cbk: (a: A, prop?: string) => any): this;
   public observe(...params: any[]): this {
+    let uninit: Array<() => void> = []
+    let values: Array<any> = []
     let fn = params[params.length - 1]
     let obs = params.slice(0, params.length - 1)
-    if (obs.length === 1)
-      this.on('destroy', obs[0].addObserver(fn))
-    else if (obs.length > 1) {
-      let dep = new DependentObservable<any>(obs, fn)
-      this.on('destroy', dep.addObserver(fn))
+    let len = obs.length
+
+    function change() {
+      if (values.length === len)
+        fn.apply(null, values)
     }
-    // this.on('destroy', obs.addObserver(cbk))
+
+    obs.forEach((ob: Observable<any>) => {
+      let idx = values.length
+      values.push(undefined)
+
+      uninit.push(ob.addObserver((val, prop) => {
+        values[idx] = val
+        change()
+      }))
+    })
+
+    this.on('destroy', () => uninit.forEach(unalloc => {
+      unalloc()
+    }))
     return this
   }
 
@@ -293,8 +319,8 @@ export class Service extends Eventable {
    * Called when destroying this Service.
    * It is meant to be overridden.
    */
-  public onDestroy() {
-
+  public destroy() {
+    this.trigger('destroy')
   }
 
 }
