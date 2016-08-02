@@ -1,5 +1,5 @@
 
-import {o, O, Eventable, Atom, VirtualAtom, Observable, Observer, DependentObservable} from 'carbyne'
+import {o, O, Eventable, Atom, VirtualAtom, Observable, Observer, DependentObservable, CarbyneListener} from 'carbyne'
 
 
 export interface Constructor<S extends Service> {
@@ -228,8 +228,14 @@ export class App extends Eventable {
   /**
    *
    */
-  require(type: Constructor<Service>): Service {
+  require<S extends Service>(type: Constructor<S>): S {
     return this.resolver.require(type)
+  }
+
+  on(evt: string, fn: CarbyneListener<this>) {
+    if (evt === 'change')
+      fn(this._mkEvent('change'))
+    return super.on(evt, fn)
   }
 
 }
@@ -391,6 +397,7 @@ export class DisplayBlockAtom extends VirtualAtom {
   block: Block
 
   current_view: View
+  current_deps: Set<Service>
 
   constructor(block: Block) {
     super(`Block <${block.name}>`)
@@ -400,23 +407,36 @@ export class DisplayBlockAtom extends VirtualAtom {
     this.app.on('change', () => {
       this.update()
     })
-    this.update()
   }
 
   update() {
     // FIXME : check if the view has had changes in services or if
     // the view object has changed.
     let view = this.app.current_screen.map.get(this.block)
+    let deps = view.deps.map(cons => this.app.services.get(cons))
+    let newdeps = new Set<Service>(deps)
 
-    let dep_changed = true // compute if dependency changed.
+    let dep_changed = !this.current_deps // compute if dependency changed.
+
+    if (this.current_deps) {
+      for (let d of deps) {
+        if (!this.current_deps.has(d)) {
+          dep_changed = true
+          break
+        }
+      }
+    }
+
+    if (!view)
+      throw new Error('no such view')
 
     if (view === this.current_view && !dep_changed)
       return
 
-    let deps = view.deps.map(cons => this.app.services.get(cons))
-    let res = view.fn.apply(null, deps)
-
     this.current_view = view
+    this.current_deps = newdeps
+
+    let res = view.fn.apply(null, deps)
 
     // FIXME won't work if changing too fast.
     this.empty().then(() => {
