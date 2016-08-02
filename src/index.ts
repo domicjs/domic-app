@@ -1,5 +1,5 @@
 
-import {o, O, Eventable, Atom, VirtualAtom, Observable, Observer, DependentObservable, CarbyneListener} from 'carbyne'
+import {o, O, Eventable, Atom, VirtualAtom, CarbyneListener} from 'carbyne'
 
 
 export interface Constructor<S extends Service> {
@@ -46,11 +46,23 @@ export class Resolver {
         // configuration for him.
         service = new type(this.app, ...conf.params)
       } else {
+
         service = this.services.get(type) as S
+        // TODO : browser its deps and add them as required.
+        if (service) {
+          for (let d of service._dependencies) {
+            let nd = this.require((d as any).constructor)
+            if (d !== nd)
+              service = null
+          }
+        }
+
         if (!service) {
           // no config, no previously instanciated service, so
           // we just create one without arguments.
-          service = new type(this.app)
+          let conf = this.configs.get(type)
+          let params = conf ? conf.params : []
+          service = new type(this.app, ...params)
         }
       }
 
@@ -80,6 +92,7 @@ export class Resolver {
     })
 
     gone_services.forEach(type => this.configs.delete(type))
+
     this.services.forEach((serv, type) => {
       if (!this.future_services.has(type))
         serv.destroy()
@@ -191,6 +204,7 @@ export class App extends Eventable {
       let prev_resolver = this.resolver
 
       this.resolver = new Resolver(this)
+
       this.resolver.prepare(this.services, ...configs)
 
       screen.deps.forEach(type => this.resolver.require(type))
@@ -413,6 +427,12 @@ export class DisplayBlockAtom extends VirtualAtom {
     // FIXME : check if the view has had changes in services or if
     // the view object has changed.
     let view = this.app.current_screen.map.get(this.block)
+
+    if (!view) {
+      this.empty()
+      return
+    }
+
     let deps = view.deps.map(cons => this.app.services.get(cons))
     let newdeps = new Set<Service>(deps)
 
