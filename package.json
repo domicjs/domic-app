@@ -5,11 +5,15 @@
   "description": "A client-side application state machine for Carbyne.",
   "license": "MIT",
   "main": "./src/index.js",
-  "typings": "./src/index.d.ts",
+  "typings": "./index.d.ts",
   "scripts": {
-    "build": "tsc"
+    "build:dts": "dts-bundle --name carbyne-app --main src/index.d.ts --out ../index.d.ts && sed -i '/\\(require\\|import\\).*\\.\\(styl\\|css\\)/d' ./index.d.ts",
+    "build:js": "tsc",
+    "build": "npm run build:js && npm run build:dts"
   },
-  "dependencies": {
-
+  "devDependencies": {
+    "@types/es6-collections": "0.0.28",
+    "@types/es6-promise": "0.0.29",
+    "dts-bundle": "^0.5.0"
   }
 }

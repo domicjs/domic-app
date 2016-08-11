@@ -9,14 +9,8 @@
         "experimentalDecorators": true,
         "noLib": false
     },
-    "filesGlob": [
-        "./**/*.ts",
-        "./**/*.tsx",
-        "!./node_modules/**/*.ts"
-    ],
     "files": [
-        "./src/index.ts",
-        "./typings/index.d.ts"
+        "./src/index.ts"
     ]
 
 }
