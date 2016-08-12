@@ -9,7 +9,8 @@
   "scripts": {
     "build:dts": "dts-bundle --name carbyne-app --main src/index.d.ts --out ../index.d.ts && sed -i '/\\(require\\|import\\).*\\.\\(styl\\|css\\)/d' ./index.d.ts",
     "build:js": "tsc",
-    "build": "npm run build:js && npm run build:dts"
+    "build": "npm run build:js && npm run build:dts",
+    "watch": "parallel -u ::: 'wr \"npm run build:dts\" src/*.d.ts' 'tscc -w'"
   },
   "devDependencies": {
     "@types/es6-collections": "0.0.28",
