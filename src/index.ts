@@ -18,6 +18,19 @@ export class ServiceConfig {
 }
 
 
+class Redirect extends Error {
+
+  screen: Screen
+  configs: ServiceConfig[]
+
+  constructor(screen: Screen, configs: ServiceConfig[]) {
+    super('redirecting')
+    this.screen = screen
+    this.configs = configs
+  }
+
+}
+
 /**
  * Resolver helps in service instanciation and destroy
  */
@@ -195,7 +208,7 @@ export class App extends Eventable {
 
       if (this.activating)
         // Should do some kind of redirect here ?
-        throw new Error(`...`)
+        return Promise.reject(new Redirect(screen, configs))
 
       this.trigger('change:before')
 
@@ -210,8 +223,10 @@ export class App extends Eventable {
       screen.deps.forEach(type => this.resolver.require(type))
 
       let promises: Thenable<any>[] = []
+
       this.resolver.future_services.forEach(serv => {
-        if (serv.initPromise) promises.push(serv.initPromise)
+        // Setup the promise chain
+        promises.push(serv.getInitPromise(serv._dependencies.map(d => d.getInitPromise())))
       })
 
       // wait on all the promises before transitionning to a new state.
@@ -227,13 +242,19 @@ export class App extends Eventable {
 
       }).catch(err => {
         // cancel activation.
+
         this.resolver.rollback()
         this.resolver = prev_resolver
         this.activating = false
+
+        if (err instanceof Redirect)
+          return this.go(err.screen, ...err.configs)
+
         return Promise.reject(err)
       })
     } catch (err) {
       this.activating = false
+
       return Promise.reject(err)
     }
 
@@ -266,19 +287,36 @@ export const app = new App
 export class Service extends Eventable {
 
   app: App
-  initPromise: Thenable<any>
   _dependencies: Array<Service> = []
+
+  protected _initPromise: Thenable<any>
 
   constructor(app: App) {
     super()
     this.app = app
   }
 
+  static with<Z, A, B, C, D, E, F>(this: new (app: App, a: A, b: B, c: C, d: D, e: E, f: F) => Z, a: A, b: B, c: C, d: D, e: E, f: F): ServiceConfig;
+  static with<Z, A, B, C, D, E>(this: new (app: App, a: A, b: B, c: C, d: D, e: E) => Z, a: A, b: B, c: C, d: D, e: E): ServiceConfig;
+  static with<Z, A, B, C, D>(this: new (app: App, a: A, b: B, c: C, d: D) => Z, a: A, b: B, c: C, d: D): ServiceConfig;
+  static with<Z, A, B, C>(this: new (app: App, a: A, b: B, c: C) => Z, a: A, b: B, c: C): ServiceConfig;
+  static with<Z, A, B>(this: new (app: App, a: A, b: B) => Z, a: A, b: B): ServiceConfig;
+  static with<Z, A>(this: new (app: App, a: A) => Z, a: A): ServiceConfig;
+  static with(...a: any[]) {
+    return new ServiceConfig(this, ...a)
+  }
+
   /**
-   * This is where other states are requested.
+   * This is where async
    */
-  public init(...a: any[]): Thenable<any> {
+  public init(...a: any[]): any {
     return null
+  }
+
+  public getInitPromise(deps?: any[]): Thenable<any> {
+    if (!this._initPromise)
+      this._initPromise = Promise.all(deps).then(() => this.init())
+    return Promise.resolve(this._initPromise)
   }
 
   /**
@@ -426,7 +464,9 @@ export class DisplayBlockAtom extends VirtualAtom {
   update() {
     // FIXME : check if the view has had changes in services or if
     // the view object has changed.
-    let view = this.app.current_screen.map.get(this.block)
+    let view = this.app.current_screen ?
+      this.app.current_screen.map.get(this.block)
+      : null
 
     if (!view) {
       this.empty()
