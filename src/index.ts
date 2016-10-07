@@ -40,6 +40,7 @@ export class Resolver {
   future_services: Map<Constructor<Service>, Service>
   configs: Map<Constructor<Service>, ServiceConfig> = new Map<Constructor<Service>, ServiceConfig>()
   future_configs: Map<Constructor<Service>, ServiceConfig>
+  commited: boolean = false
   app: App
 
   constructor(app: App) {
@@ -50,6 +51,10 @@ export class Resolver {
    *
    */
   require<S extends Service>(type: Constructor<S>): S {
+
+    if (this.commited)
+      return this.services.get(type) as S
+
     let service = this.future_services.get(type) as S
 
     if (!service) {
@@ -113,6 +118,7 @@ export class Resolver {
 
     this.services = this.future_services
     this.future_services = new Map<Constructor<Service>, Service>()
+    this.commited = true
   }
 
   /**
@@ -215,9 +221,7 @@ export class App extends Eventable {
       this.activating = true
 
       let prev_resolver = this.resolver
-
       this.resolver = new Resolver(this)
-
       this.resolver.prepare(this.services, ...configs)
 
       screen.deps.forEach(type => this.resolver.require(type))
