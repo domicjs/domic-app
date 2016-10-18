@@ -1,16 +1,19 @@
 {
-  "name": "carbyne-app",
+  "name": "domic-app",
   "version": "0.1.0",
-  "repository": "https://github.com/ceymard/carbyne-state",
+  "repository": "https://github.com/ceymard/domic-state",
   "description": "A client-side application state machine for Carbyne.",
   "license": "MIT",
   "main": "./src/index.js",
   "typings": "./index.d.ts",
   "scripts": {
-    "build:dts": "dts-bundle --name carbyne-app --main src/index.d.ts --out ../index.d.ts && sed -i '/\\(require\\|import\\).*\\.\\(styl\\|css\\)/d' ./index.d.ts",
+    "build:dts": "dts-bundle --name domic-app --main src/index.d.ts --out ../index.d.ts && sed -i '/\\(require\\|import\\).*\\.\\(styl\\|css\\)/d' ./index.d.ts",
     "build:js": "tsc",
     "build": "npm run build:js && npm run build:dts",
     "watch": "parallel -u ::: 'ls src/*.d.ts | entr -d npm run build:dts' 'tscc -w'"
+  },
+  "dependencies": {
+    "domic": "*"
   },
   "devDependencies": {
     "@types/es6-collections": "0.0.28",

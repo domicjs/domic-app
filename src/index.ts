@@ -1,5 +1,10 @@
 
-import {o, O, Eventable, Atom, VirtualAtom, CarbyneListener} from 'carbyne'
+import {
+  d,
+  o,
+  O,
+  VirtualHolder
+} from 'domic'
 
 
 export interface Constructor<S extends Service> {
@@ -157,7 +162,7 @@ export class Resolver {
 /**
  * Application
  */
-export class App extends Eventable {
+export class App {
 
   public activating = false
 
@@ -165,20 +170,6 @@ export class App extends Eventable {
   public resolver: Resolver = new Resolver(this)
   public services: Map<Constructor<Service>, Service>
   public config: Map<Constructor<Service>, ServiceConfig>
-
-  // protected active_partials = new Map<Constructor<Partial>, Partial>()
-  // protected activating_partials: Map<Constructor<Partial>, Partial> = null
-  // protected currently_activating: Partial[] = []
-
-  /**
-   *
-   */
-  // protected registered_partials: {[name: string]: Constructor<Partial>}
-
-  constructor() {
-    super()
-    // this.active_partials = new Map<Constructor<Partial>, Partial>()
-  }
 
   block(): Block {
 
@@ -288,7 +279,7 @@ export const app = new App
 /**
  *
  */
-export class Service extends Eventable {
+export class Service {
 
   app: App
   _dependencies: Array<Service> = []
@@ -447,7 +438,9 @@ export type Block = {
 /**
  *
  */
-export class DisplayBlockAtom extends VirtualAtom {
+export class DisplayBlockAtom extends VirtualHolder {
+
+  name: 'block'
 
   app: App
   block: Block
@@ -456,7 +449,7 @@ export class DisplayBlockAtom extends VirtualAtom {
   current_deps: Set<Service>
 
   constructor(block: Block) {
-    super(`Block <${block.name}>`)
+    super()
     this.app = block.app
     this.block = block
 
@@ -503,9 +496,9 @@ export class DisplayBlockAtom extends VirtualAtom {
     let res = view.fn.apply(null, deps)
 
     // FIXME won't work if changing too fast.
-    this.empty().then(() => {
-      this.append(res)
-    }, e => console.error(e))
+    // this.empty().then(() => {
+    //   this.append(res)
+    // }, e => console.error(e))
   }
 
 }
@@ -513,6 +506,6 @@ export class DisplayBlockAtom extends VirtualAtom {
 /**
  * Display a Block into the Tree
  */
-export function DisplayBlock(holder: Block): Atom {
+export function DisplayBlock(holder: Block): Node {
   return new DisplayBlockAtom(holder)
 }
