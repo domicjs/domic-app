@@ -3,26 +3,29 @@ import {
   d,
   o,
   O,
-  VirtualHolder
+  VirtualHolder,
+  NodeCreatorFn,
+  Instantiator
 } from 'domic'
 
 
-export interface Constructor<S extends Service> {
-  new(...a: any[]): S
-}
-
-
+/**
+ *
+ */
 export class ServiceConfig {
-  service: Constructor<Service>
+  service: Instantiator<Service>
   params: any[] = []
 
-  constructor(service: Constructor<Service>, ...params: any[]) {
+  constructor(service: Instantiator<Service>, ...params: any[]) {
     this.service = service
     this.params = params
   }
 }
 
 
+/**
+ *
+ */
 class Redirect extends Error {
 
   screen: Screen
@@ -36,16 +39,20 @@ class Redirect extends Error {
 
 }
 
+
+export type ConfigMap = Map<Instantiator<Service>, ServiceConfig>
+export type ServiceMap = Map<Instantiator<Service>, Service>
+
+
 /**
  * Resolver helps in service instanciation and destroy
  */
 export class Resolver {
 
-  services: Map<Constructor<Service>, Service>
-  future_services: Map<Constructor<Service>, Service>
-  configs: Map<Constructor<Service>, ServiceConfig> = new Map<Constructor<Service>, ServiceConfig>()
-  future_configs: Map<Constructor<Service>, ServiceConfig>
-  commited: boolean = false
+  services: ServiceMap
+  configs: ConfigMap
+
+  old_resolver: Resolver | null
   app: App
 
   constructor(app: App) {
@@ -55,44 +62,52 @@ export class Resolver {
   /**
    *
    */
-  require<S extends Service>(type: Constructor<S>): S {
+  require<S extends Service>(type: Instantiator<S>): S {
 
-    if (this.commited)
-      return this.services.get(type) as S
+    let service = this.services.get(type) as S
 
-    let service = this.future_services.get(type) as S
+    if (service) return service
 
-    if (!service) {
-      let conf = this.future_configs.get(type)
-      if (conf) {
-        // we ignore previous service, since we are being given a new
-        // configuration for him.
-        service = new type(this.app, ...conf.params)
-      } else {
+    let conf = this.configs.get(type)
+    if (conf) {
+      // we ignore previous service, since we are being given a new
+      // configuration for it.
+      service = new type(this.app, ...conf.params)
+    } else {
+      // try to get an older version of the service since possibly its
+      // configuration has not changed.
+      service = this.old_resolver ? this.old_resolver.services.get(type) as S : null
+      conf = this.old_resolver ? this.old_resolver.configs.get(type) : null
 
-        service = this.services.get(type) as S
-        // TODO : browser its deps and add them as required.
-        if (service) {
-          for (let d of service._dependencies) {
-            let nd = this.require((d as any).constructor)
-            if (d !== nd)
-              service = null
-          }
-        }
-
-        if (!service) {
-          // no config, no previously instanciated service, so
-          // we just create one without arguments.
-          let conf = this.configs.get(type)
-          let params = conf ? conf.params : []
-          service = new type(this.app, ...params)
+      if (service) {
+        // browse the dependencies and check that they haven't changed themselves.
+        // if require() sends a different instance of the dependency, this service
+        // is not reused.
+        for (let d of service._dependencies) {
+          let nd = this.require((d as any).constructor)
+          if (d !== nd)
+            service = null
         }
       }
 
-      this.future_services.set(type, service)
+      if (!service) {
+        // no config, no previously instanciated service, so
+        // we just create one without arguments, reusing its config if it had one previously.
+        let params = conf ? conf.params : []
+        service = new type(this.app, ...params)
+      }
+
+      // pull the old configuration into the new map to keep track of it.
+      if (conf) this.configs.set(type, conf)
     }
 
+    this.services.set(type, service)
+
     return service
+  }
+
+  addScreens(screens: Screen[]) {
+
   }
 
   /**
@@ -101,59 +116,43 @@ export class Resolver {
    */
   commit(): void {
 
-    // merge future_configs into configs
-    this.future_configs.forEach((conf, type) => {
-      this.configs.set(type, conf)
+    // Destroy old service versions.
+    this.old_resolver.services.forEach((serv, type) => {
+      if (this.services.get(type) !== serv) {
+        serv._destroy()
+      }
     })
 
-    // remove services that don't exist in the new ones from all_config
-    // so that this.all_config represents the current global configuration.
-    let gone_services = new Set<Constructor<Service>>()
-    this.configs.forEach((conf, type) => {
-      if (!this.future_services.has(type))
-        gone_services.add(type)
-    })
-
-    gone_services.forEach(type => this.configs.delete(type))
-
-    this.services.forEach((serv, type) => {
-      if (!this.future_services.has(type))
-        serv.destroy()
-    })
-
-    this.services = this.future_services
-    this.future_services = new Map<Constructor<Service>, Service>()
-    this.commited = true
+    // free the old resolver so it can be garbage collected.
+    this.old_resolver = null
   }
 
-  /**
-   * Cancel the change.
-   */
-  rollback(): void {
-    this.future_services = new Map<Constructor<Service>, Service>()
-    this.future_configs = new Map<Constructor<Service>, ServiceConfig>()
+  init(): Promise<any> {
+    let promises: Thenable<any>[] = []
+
+    this.services.forEach(serv => {
+      // Setup the promise chain ; basically, getInitPromise gets all the dependencies promises
+      // and will make their init() method wait on them.
+      promises.push(serv.getInitPromise(serv._dependencies.map(d => d.getInitPromise())))
+    })
+
+    return Promise.all(promises)
   }
 
   /**
    * Prepare the resolver for a new transition.
    */
-  prepare(services: Map<Constructor<Service>, Service>, ...configs: ServiceConfig[]): void {
+  prepare(
+    screen: Screen,
+    old_resolver: Resolver,
+    configs: ServiceConfig[]
+  ): void {
     // Setup the config map
-    this.future_configs = new Map<Constructor<Service>, ServiceConfig>()
-    configs.forEach(conf => this.future_configs.set(conf.service, conf))
+    this.configs = new Map() as ConfigMap
+    this.services = new Map() as ServiceMap
 
-    // Only keep the services for which we know there won't be a
-    // reinit.
-    this.services = new Map<Constructor<Service>, Service>()
-    if (services) {
-      services.forEach((service, type) => {
-        if (!this.future_configs.has(type))
-          this.services.set(type, service)
-      })
-    }
-
-    // Prepare the future services.
-    this.future_services = new Map<Constructor<Service>, Service>()
+    configs.forEach(conf => this.configs.set(conf.service, conf))
+    screen.deps.forEach(dep => this.require(dep))
   }
 
 }
@@ -168,8 +167,8 @@ export class App {
 
   public current_screen: Screen = null
   public resolver: Resolver = new Resolver(this)
-  public services: Map<Constructor<Service>, Service>
-  public config: Map<Constructor<Service>, ServiceConfig>
+  public services: Map<Instantiator<Service>, Service>
+  public config: Map<Instantiator<Service>, ServiceConfig>
 
   block(): Block {
 
@@ -201,31 +200,20 @@ export class App {
    */
   go(screen: Screen, ...configs: ServiceConfig[]): Thenable<any> {
 
+    if (this.activating)
+      // Should do some kind of redirect here ?
+      return Promise.reject(new Redirect(screen, configs))
+
     try {
-
-      if (this.activating)
-        // Should do some kind of redirect here ?
-        return Promise.reject(new Redirect(screen, configs))
-
-      this.trigger('change:before')
-
       this.activating = true
 
       let prev_resolver = this.resolver
       this.resolver = new Resolver(this)
-      this.resolver.prepare(this.services, ...configs)
 
-      screen.deps.forEach(type => this.resolver.require(type))
-
-      let promises: Thenable<any>[] = []
-
-      this.resolver.future_services.forEach(serv => {
-        // Setup the promise chain
-        promises.push(serv.getInitPromise(serv._dependencies.map(d => d.getInitPromise())))
-      })
+      this.resolver.prepare(screen, prev_resolver, configs)
 
       // wait on all the promises before transitionning to a new state.
-      return Promise.all(promises).then(res => {
+      return this.resolver.init().then(res => {
         this.resolver.commit()
         this.config = this.resolver.configs
         this.services = this.resolver.services
@@ -238,7 +226,6 @@ export class App {
       }).catch(err => {
         // cancel activation.
 
-        this.resolver.rollback()
         this.resolver = prev_resolver
         this.activating = false
 
@@ -258,14 +245,8 @@ export class App {
   /**
    *
    */
-  require<S extends Service>(type: Constructor<S>): S {
+  require<S extends Service>(type: Instantiator<S>): S {
     return this.resolver.require(type)
-  }
-
-  on(evt: string, fn: CarbyneListener<this>) {
-    if (evt === 'change')
-      fn(this._mkEvent('change'))
-    return super.on(evt, fn)
   }
 
 }
@@ -282,12 +263,12 @@ export const app = new App
 export class Service {
 
   app: App
-  _dependencies: Array<Service> = []
+  ondestroy: (() => any)[] = []
 
+  _dependencies: Array<Service> = []
   protected _initPromise: Thenable<any>
 
   constructor(app: App) {
-    super()
     this.app = app
   }
 
@@ -317,7 +298,7 @@ export class Service {
   /**
    * Require another service and put it into the list of dependencies.
    */
-  public require<S extends Service>(p: Constructor<S>): S {
+  public require<S extends Service>(p: Instantiator<S>): S {
     let serv = this.app.require(p)
     this._dependencies.push(serv)
     return serv as S
@@ -330,7 +311,8 @@ export class Service {
   public observe<A, B>(a: O<A>, b: O<B>, cbk: (a: A, b: B) => any): this;
   public observe<A>(a: O<A>, cbk: (a: A, prop?: string) => any): this;
   public observe(...params: any[]): this {
-    this.on('destroy', (o.observe as any)(...params))
+    let unreg = (o.observe as any)(...params)
+    this.ondestroy.push(unreg)
     return this
   }
 
@@ -345,12 +327,17 @@ export class Service {
     return false
   }
 
+  _destroy() {
+    for (let d of this.ondestroy) d()
+    this.destroy()
+  }
+
   /**
    * Called when destroying this Service.
    * It is meant to be overridden.
    */
   public destroy() {
-    this.trigger('destroy')
+
   }
 
 }
@@ -363,7 +350,7 @@ export class Screen {
 
   public app: App
   public map = new Map<Block, View>()
-  public deps = new Set<Constructor<Service>>()
+  public deps = new Set<Instantiator<Service>>()
 
   constructor(app: App) {
     this.app = app
@@ -406,7 +393,7 @@ export class Screen {
 export class View {
 
   public app: App
-  public deps: Constructor<Service>[]
+  public deps: Instantiator<Service>[]
   public fn: (...a: Service[]) => Atom
   public block: Block
 
