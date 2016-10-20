@@ -164,6 +164,8 @@ export class Resolver {
     this.configs = new Map() as ConfigMap
     this.services = new Map() as ServiceMap
 
+    this.old_resolver = old_resolver
+
     configs.forEach(conf => this.configs.set(conf.service, conf))
     screen.deps.forEach(dep => this.require(dep))
   }
@@ -179,7 +181,7 @@ export class App {
   public activating = false
 
   public current_screen: Screen = null
-  public resolver: Resolver = new Resolver(this)
+  public resolver: Resolver = null
   public services: Map<Instantiator<Service>, Service>
   public config: Map<Instantiator<Service>, ServiceConfig>
 
