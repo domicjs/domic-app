@@ -2,7 +2,9 @@
 import {
   d,
   o,
+  onrender,
   O,
+  Observable,
   VirtualHolder,
   NodeCreatorFn,
   Instantiator
@@ -60,7 +62,15 @@ export class Resolver {
   }
 
   /**
+   *  For a given service type, return an instance, creating it
+   *  if it doesn't exist, using a matching ServiceConfig if provided.
    *
+   *  If this is not the first time the service is instanciated, try
+   *  to reuse a previous instance as long as its config or any of its
+   *  dependencies have not changed.
+   *
+   *  @param type: A Service type
+   *  @returns: The matching service instance
    */
   require<S extends Service>(type: Instantiator<S>): S {
 
@@ -106,20 +116,16 @@ export class Resolver {
     return service
   }
 
-  addScreens(screens: Screen[]) {
-
-  }
-
   /**
-   * Destroy services that won't be used anymore, remove configs of
-   * services that are gone from the services.
+   * Destroy services that won't be used anymore by calling their destroy()
+   * method.
    */
   commit(): void {
 
     // Destroy old service versions.
     this.old_resolver.services.forEach((serv, type) => {
       if (this.services.get(type) !== serv) {
-        serv._destroy()
+        serv.destroy()
       }
     })
 
@@ -127,6 +133,11 @@ export class Resolver {
     this.old_resolver = null
   }
 
+  /**
+   * Call all the init() of the services.
+   *
+   * @returns: A promise of when the initiation will be done.
+   */
   init(): Promise<any> {
     let promises: Thenable<any>[] = []
 
@@ -169,6 +180,8 @@ export class App {
   public resolver: Resolver = new Resolver(this)
   public services: Map<Instantiator<Service>, Service>
   public config: Map<Instantiator<Service>, ServiceConfig>
+
+  public o_services: Observable<ServiceMap> = o(null)
 
   block(): Block {
 
@@ -221,7 +234,7 @@ export class App {
         this.current_screen = screen as Screen
         this.activating = false
 
-        this.trigger('change')
+        this.o_services.set(this.services)
 
       }).catch(err => {
         // cancel activation.
@@ -283,12 +296,20 @@ export class Service {
   }
 
   /**
-   * This is where async
+   * Overload this method to perform your service initiation. You can
+   * return a Promise to indicate that the service may initialize itself
+   * asynchronously -- it may for instance perform network requests.
+   *
+   * If this service used require() for another service, then init() will
+   * only be called once the dependencies' init() have been resolved.
    */
-  public init(...a: any[]): any {
+  public init(): any {
     return null
   }
 
+  /**
+   *
+   */
   public getInitPromise(deps?: any[]): Thenable<any> {
     if (!this._initPromise)
       this._initPromise = Promise.all(deps).then(() => this.init())
@@ -327,16 +348,16 @@ export class Service {
     return false
   }
 
-  _destroy() {
+  destroy() {
     for (let d of this.ondestroy) d()
-    this.destroy()
+    this.onDestroy()
   }
 
   /**
    * Called when destroying this Service.
    * It is meant to be overridden.
    */
-  public destroy() {
+  public onDestroy() {
 
   }
 
@@ -349,7 +370,7 @@ export class Service {
 export class Screen {
 
   public app: App
-  public map = new Map<Block, View>()
+  public blocks = new Map<Block, View>()
   public deps = new Set<Instantiator<Service>>()
 
   constructor(app: App) {
@@ -357,8 +378,8 @@ export class Screen {
   }
 
   include(def: Screen): Screen {
-    def.map.forEach((view, block) => {
-      if (!this.map.has(block))
+    def.blocks.forEach((view, block) => {
+      if (!this.blocks.has(block))
         // include never overwrites blocks we would already have.
         this.setBlock(block, view)
     })
@@ -378,7 +399,7 @@ export class Screen {
   }
 
   protected setBlock(block: Block, view: View) {
-    this.map.set(block, view)
+    this.blocks.set(block, view)
     view.deps.forEach(dep => this.deps.add(dep))
     return this
   }
@@ -394,7 +415,7 @@ export class View {
 
   public app: App
   public deps: Instantiator<Service>[]
-  public fn: (...a: Service[]) => Atom
+  public fn: (...a: Service[]) => Node
   public block: Block
 
   constructor(app: App) {
@@ -408,13 +429,13 @@ export class View {
  *
  */
 export type Block = {
-  <A extends Service, B extends Service, C extends Service, D extends Service, E extends Service, F extends Service>(a: new (...a: any[]) => A, b: new (...a: any[]) => B, c: new (...a: any[]) => C, d: new (...a: any[]) => D, e: new (...a: any[]) => E, f: new (...a: any[]) => F, fn: (a: A, b: B, c: C, d: D, e: E, f: F) => Atom): View;
-  <A extends Service, B extends Service, C extends Service, D extends Service, E extends Service>(a: new (...a: any[]) => A, b: new (...a: any[]) => B, c: new (...a: any[]) => C, d: new (...a: any[]) => D, e: new (...a: any[]) => E, fn: (a: A, b: B, c: C, d: D, e: E) => Atom): View;
-  <A extends Service, B extends Service, C extends Service, D extends Service>(a: new (...a: any[]) => A, b: new (...a: any[]) => B, c: new (...a: any[]) => C, d: new (...a: any[]) => D, fn: (a: A, b: B, c: C, d: D) => Atom): View;
-  <A extends Service, B extends Service, C extends Service>(a: new (...a: any[]) => A, b: new (...a: any[]) => B, c: new (...a: any[]) => C, fn: (a: A, b: B, c: C) => Atom): View;
-  <A extends Service, B extends Service>(a: new (...a: any[]) => A, b: new (...a: any[]) => B, fn: (a: A, b: B) => Atom): View;
-  <A extends Service>(a: new (...a: any[]) => A, fn: (c: A) => Atom): View;
-  (fn: () => Atom): View;
+  <A extends Service, B extends Service, C extends Service, D extends Service, E extends Service, F extends Service>(a: Instantiator<A>, b: Instantiator<B>, c: Instantiator<C>, d: Instantiator<D>, e: Instantiator<E>, f: Instantiator<F>, fn: (a: A, b: B, c: C, d: D, e: E, f: F) => Node): View;
+  <A extends Service, B extends Service, C extends Service, D extends Service, E extends Service>(a: Instantiator<A>, b: Instantiator<B>, c: Instantiator<C>, d: Instantiator<D>, e: Instantiator<E>, fn: (a: A, b: B, c: C, d: D, e: E) => Node): View;
+  <A extends Service, B extends Service, C extends Service, D extends Service>(a: Instantiator<A>, b: Instantiator<B>, c: Instantiator<C>, d: Instantiator<D>, fn: (a: A, b: B, c: C, d: D) => Node): View;
+  <A extends Service, B extends Service, C extends Service>(a: Instantiator<A>, b: Instantiator<B>, c: Instantiator<C>, fn: (a: A, b: B, c: C) => Node): View;
+  <A extends Service, B extends Service>(a: Instantiator<A>, b: Instantiator<B>, fn: (a: A, b: B) => Node): View;
+  <A extends Service>(a: Instantiator<A>, fn: (c: A) => Node): View;
+  (fn: () => Node): View;
 
   app: App
   // should work since this is a function
@@ -427,37 +448,34 @@ export type Block = {
  */
 export class DisplayBlockAtom extends VirtualHolder {
 
-  name: 'block'
-
-  app: App
-  block: Block
+  attrs: {
+    block: Block
+  }
 
   current_view: View
   current_deps: Set<Service>
 
-  constructor(block: Block) {
-    super()
-    this.app = block.app
-    this.block = block
-
-    this.app.on('change', () => {
-      this.update()
+  render() {
+    this.observe(this.attrs.block.app.o_services, services => {
+      if (!app.current_screen) return
+      this.update(app)
     })
+
+    this.name = `block ${this.attrs.block.name}`
+
+    return super.render()
   }
 
-  update() {
+
+  update(app: App): void {
     // FIXME : check if the view has had changes in services or if
     // the view object has changed.
-    let view = this.app.current_screen ?
-      this.app.current_screen.map.get(this.block)
-      : null
+    let view = app.current_screen.blocks.get(this.attrs.block)
 
-    if (!view) {
-      this.empty()
-      return
-    }
+    if (!view)
+      return this.updateChildren(null)
 
-    let deps = view.deps.map(cons => this.app.services.get(cons))
+    let deps = view.deps.map(type => app.services.get(type))
     let newdeps = new Set<Service>(deps)
 
     let dep_changed = !this.current_deps // compute if dependency changed.
@@ -471,21 +489,15 @@ export class DisplayBlockAtom extends VirtualHolder {
       }
     }
 
-    if (!view)
-      throw new Error('no such view')
-
     if (view === this.current_view && !dep_changed)
       return
 
     this.current_view = view
     this.current_deps = newdeps
 
-    let res = view.fn.apply(null, deps)
+    // Compute the new view value.
+    this.updateChildren(view.fn(...deps))
 
-    // FIXME won't work if changing too fast.
-    // this.empty().then(() => {
-    //   this.append(res)
-    // }, e => console.error(e))
   }
 
 }
@@ -493,6 +505,6 @@ export class DisplayBlockAtom extends VirtualHolder {
 /**
  * Display a Block into the Tree
  */
-export function DisplayBlock(holder: Block): Node {
-  return new DisplayBlockAtom(holder)
+export function DisplayBlock(block: Block): Node {
+  return d(DisplayBlockAtom, {block})
 }
