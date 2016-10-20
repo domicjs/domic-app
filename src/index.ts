@@ -123,11 +123,13 @@ export class Resolver {
   commit(): void {
 
     // Destroy old service versions.
-    this.old_resolver.services.forEach((serv, type) => {
-      if (this.services.get(type) !== serv) {
-        serv.destroy()
-      }
-    })
+    if (this.old_resolver) {
+      this.old_resolver.services.forEach((serv, type) => {
+        if (this.services.get(type) !== serv) {
+          serv.destroy()
+        }
+      })
+    }
 
     // free the old resolver so it can be garbage collected.
     this.old_resolver = null
@@ -139,7 +141,7 @@ export class Resolver {
    * @returns: A promise of when the initiation will be done.
    */
   init(): Promise<any> {
-    let promises: Thenable<any>[] = []
+    let promises: Promise<any>[] = []
 
     this.services.forEach(serv => {
       // Setup the promise chain ; basically, getInitPromise gets all the dependencies promises
@@ -183,7 +185,7 @@ export class App {
 
   public o_services: Observable<ServiceMap> = o(null)
 
-  block(): Block {
+  block(name: string): Block {
 
     var block: Block = function _block(...a: any[]): View {
       let v = new View(this)
@@ -197,6 +199,7 @@ export class App {
     } as Block
 
     block.app = this
+    block._name = name
 
     return block
     // return new Block(this)
@@ -211,7 +214,7 @@ export class App {
   /**
    *
    */
-  go(screen: Screen, ...configs: ServiceConfig[]): Thenable<any> {
+  go(screen: Screen, ...configs: ServiceConfig[]): Promise<any> {
 
     if (this.activating)
       // Should do some kind of redirect here ?
@@ -279,7 +282,7 @@ export class Service {
   ondestroy: (() => any)[] = []
 
   _dependencies: Array<Service> = []
-  protected _initPromise: Thenable<any>
+  protected _initPromise: Promise<any>
 
   constructor(app: App) {
     this.app = app
@@ -310,7 +313,7 @@ export class Service {
   /**
    *
    */
-  public getInitPromise(deps?: any[]): Thenable<any> {
+  public getInitPromise(deps?: any[]): Promise<any> {
     if (!this._initPromise)
       this._initPromise = Promise.all(deps).then(() => this.init())
     return Promise.resolve(this._initPromise)
@@ -438,8 +441,7 @@ export type Block = {
   (fn: () => Node): View;
 
   app: App
-  // should work since this is a function
-  name?: string
+  _name?: string
 }
 
 
@@ -461,7 +463,7 @@ export class DisplayBlockAtom extends VirtualHolder {
       this.update(app)
     })
 
-    this.name = `block ${this.attrs.block.name}`
+    this.name = `block ${this.attrs.block._name}`
 
     return super.render()
   }
