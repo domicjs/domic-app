@@ -217,7 +217,6 @@ export class App {
    *
    */
   go(screen: Screen, ...configs: ServiceConfig[]): Promise<any> {
-
     if (this.activating)
       // Should do some kind of redirect here ?
       return Promise.reject(new Redirect(screen, configs))
@@ -458,14 +457,13 @@ export class DisplayBlockAtom extends VirtualHolder {
 
   current_view: View
   current_deps: Set<Service>
+  name = `block ${this.attrs.block._name}`
 
   render() {
     this.observe(this.attrs.block.app.o_services, services => {
       if (!app.current_screen) return
       this.update(app)
     })
-
-    this.name = `block ${this.attrs.block._name}`
 
     return super.render()
   }
