@@ -10,6 +10,7 @@
     "build:dts": "dts-bundle --name domic-app --main src/index.d.ts --out ../index.d.ts && sed -i '/\\(require\\|import\\).*\\.\\(styl\\|css\\)/d' ./index.d.ts",
     "build:js": "tsc",
     "build": "npm run build:js && npm run build:dts",
+    "prepublish": "npm run build",
     "watch": "parallel -u ::: 'ls src/*.d.ts | entr -d npm run build:dts' 'tscc -w'"
   },
   "dependencies": {
