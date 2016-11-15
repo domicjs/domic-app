@@ -6,6 +6,7 @@
         "sourceMap": true,
         "noImplicitAny": true,
         "noImplicitReturns": true,
+        "outDir": ".",
         "experimentalDecorators": true,
         "noLib": false
     },
