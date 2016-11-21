@@ -1,6 +1,6 @@
 {
   "name": "domic-app",
-  "version": "0.1.3",
+  "version": "0.1.4",
   "repository": "https://github.com/ceymard/domic-state",
   "description": "A client-side application state machine for Carbyne.",
   "license": "MIT",
