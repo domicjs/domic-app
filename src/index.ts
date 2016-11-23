@@ -246,7 +246,7 @@ export class App {
         this.resolver = prev_resolver
         this.activating = false
 
-        if (err instanceof Redirect)
+        if (err.message === 'redirecting' && err.screen)
           return this.go(err.screen, ...err.configs)
 
         return Promise.reject(err)

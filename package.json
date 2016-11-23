@@ -15,7 +15,6 @@
     "domic": "*"
   },
   "devDependencies": {
-    "@types/es6-shim": "^0.31.32",
     "dts-bundle": "^0.5.0"
   }
 }
