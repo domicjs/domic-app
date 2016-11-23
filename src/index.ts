@@ -274,6 +274,14 @@ export class App {
 export const app = new App
 
 
+export interface HasConfig<C> {
+  new (...a: any[]): InstanceHasConfig<C>
+}
+
+export interface InstanceHasConfig<C> extends Service {
+  init(c?: C): any
+}
+
 /**
  *
  */
@@ -289,14 +297,15 @@ export class Service {
     this.app = app
   }
 
-  static with<Z, A, B, C, D, E, F>(this: new (app: App, a: A, b: B, c: C, d: D, e: E, f: F) => Z, a: A, b: B, c: C, d: D, e: E, f: F): ServiceConfig;
-  static with<Z, A, B, C, D, E>(this: new (app: App, a: A, b: B, c: C, d: D, e: E) => Z, a: A, b: B, c: C, d: D, e: E): ServiceConfig;
-  static with<Z, A, B, C, D>(this: new (app: App, a: A, b: B, c: C, d: D) => Z, a: A, b: B, c: C, d: D): ServiceConfig;
-  static with<Z, A, B, C>(this: new (app: App, a: A, b: B, c: C) => Z, a: A, b: B, c: C): ServiceConfig;
-  static with<Z, A, B>(this: new (app: App, a: A, b: B) => Z, a: A, b: B): ServiceConfig;
-  static with<Z, A>(this: new (app: App, a: A) => Z, a: A): ServiceConfig;
-  static with(...a: any[]) {
-    return new ServiceConfig(this, ...a)
+  // static with<Z, A, B, C, D, E, F>(this: new (app: App, a: A, b: B, c: C, d: D, e: E, f: F) => Z, a: A, b: B, c: C, d: D, e: E, f: F): ServiceConfig;
+  // static with<Z, A, B, C, D, E>(this: new (app: App, a: A, b: B, c: C, d: D, e: E) => Z, a: A, b: B, c: C, d: D, e: E): ServiceConfig;
+  // static with<Z, A, B, C, D>(this: new (app: App, a: A, b: B, c: C, d: D) => Z, a: A, b: B, c: C, d: D): ServiceConfig;
+  // static with<Z, A, B, C>(this: new (app: App, a: A, b: B, c: C) => Z, a: A, b: B, c: C): ServiceConfig;
+  // static with<Z, A, B>(this: new (app: App, a: A, b: B) => Z, a: A, b: B): ServiceConfig;
+  // static with<Z, A>(this: new (app: App, a: A) => Z, a: A): ServiceConfig;
+  // static with(...a: any[]) {
+  static initWith<C>(this: HasConfig<C>, config: C) {
+    return new ServiceConfig(this as any, config)
   }
 
   /**
@@ -307,7 +316,7 @@ export class Service {
    * If this service used require() for another service, then init() will
    * only be called once the dependencies' init() have been resolved.
    */
-  public init(): any {
+  public init(...a: any[]): any {
     return null
   }
 
@@ -315,8 +324,10 @@ export class Service {
    *
    */
   public getInitPromise(deps?: any[]): Promise<any> {
+    let conf = this.app.resolver.configs.get(this.constructor as typeof Service)
+    let params = conf ? conf.params : []
     if (!this._initPromise)
-      this._initPromise = Promise.all(deps).then(() => this.init())
+      this._initPromise = Promise.all(deps).then(() => this.init(...params))
     return Promise.resolve(this._initPromise)
   }
 
