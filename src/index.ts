@@ -239,7 +239,6 @@ export class App {
         this.activating = false
 
         this.o_services.set(this.services)
-
       }).catch(err => {
         // cancel activation.
 
@@ -279,7 +278,7 @@ export interface HasConfig<C> {
 }
 
 export interface InstanceHasConfig<C> extends Service {
-  init(c?: C): any
+  init(c: C): any
 }
 
 /**
@@ -316,7 +315,7 @@ export class Service {
    * If this service used require() for another service, then init() will
    * only be called once the dependencies' init() have been resolved.
    */
-  public init(...a: any[]): any {
+  public init(a: any = null): any {
     return null
   }
 
@@ -327,7 +326,7 @@ export class Service {
     let conf = this.app.resolver.configs.get(this.constructor as typeof Service)
     let params = conf ? conf.params : []
     if (!this._initPromise)
-      this._initPromise = Promise.all(deps).then(() => this.init(...params))
+      this._initPromise = Promise.all(deps).then(() => this.init.apply(this, params))
     return Promise.resolve(this._initPromise)
   }
 
