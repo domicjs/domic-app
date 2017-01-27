@@ -173,6 +173,8 @@ export class Resolver {
 }
 
 
+export type State = {screen: Screen, config: Map<Instantiator<Service>, ServiceConfig>}
+
 /**
  * Application
  */
@@ -185,7 +187,18 @@ export class App {
   public services: Map<Instantiator<Service>, Service>
   public config: Map<Instantiator<Service>, ServiceConfig>
 
+  public state_stack: State[] = []
+  public current_state_index: number = -1
+
   public o_services: Observable<ServiceMap> = o(null)
+
+  constructor() {
+
+    window.addEventListener('popstate', ev => {
+      this.popstate(ev.state.state_index)
+    })
+
+  }
 
   block(name: string): Block {
 
@@ -208,7 +221,7 @@ export class App {
   }
 
   screen(name: string, ...views: View[]): Screen {
-    let screen = new Screen(this)
+    let screen = new Screen(this, name)
     screen.define(...views)
     return screen
   }
@@ -239,6 +252,21 @@ export class App {
         this.activating = false
 
         this.o_services.set(this.services)
+
+        // Replace state stack to remove all possible forward occurences...
+        // XXX : forward is bugged ?
+        this.state_stack = this.state_stack.slice(0, this.current_state_index + 1)
+
+        // Push
+        this.state_stack.push({
+          screen: this.current_screen,
+          config: this.config
+        })
+
+        this.current_state_index = this.state_stack.length - 1
+
+        window.history.pushState({state_index: this.state_stack.length - 1}, null)
+
       }).catch(err => {
         // cancel activation.
 
@@ -256,6 +284,20 @@ export class App {
       return Promise.reject(err)
     }
 
+  }
+
+  async popstate(idx: number) {
+    if (this.state_stack.length === 0) return Promise.reject('no previous screen')
+
+    let state = this.state_stack[idx]
+    let configs: ServiceConfig[] = []
+    state.config.forEach(value => configs.push(value))
+
+    try {
+      await this.go(state.screen, ...configs)
+    } catch (e) {
+      console.error(e)
+    }
   }
 
   /**
@@ -386,12 +428,11 @@ export class Service {
  */
 export class Screen {
 
-  public app: App
   public blocks = new Map<Block, View>()
   public deps = new Set<Instantiator<Service>>()
 
-  constructor(app: App) {
-    this.app = app
+  constructor(public app: App, public name: string) {
+
   }
 
   include(def: Screen): Screen {
@@ -404,7 +445,7 @@ export class Screen {
   }
 
   extend(name: string, ...views: View[]): Screen {
-    let s = new Screen(this.app)
+    let s = new Screen(this.app, name)
     s.include(this)
     s.define(...views)
     return s
