@@ -1,15 +1,16 @@
 {
   "name": "domic-app",
-  "version": "0.1.6",
+  "version": "0.1.7",
   "repository": "https://github.com/ceymard/domic-state",
   "description": "A client-side application state machine for Carbyne.",
   "license": "MIT",
-  "typings": "./index.d.ts",
+  "typings": "./app.d.ts",
+  "main": "./app.js",
   "scripts": {
     "build:js": "tsc",
     "build": "npm run build:js",
     "prepublish": "npm run build",
-    "watch": "parallel -u ::: 'ls src/*.d.ts | entr -d npm run build:dts' 'tscc -w'"
+    "watch": "tscc -w"
   },
   "dependencies": {
     "domic": "*"

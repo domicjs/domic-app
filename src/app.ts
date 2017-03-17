@@ -3,8 +3,10 @@ import {
   d,
   o,
   onrender,
-  O,
+  MaybeObservable,
   Observable,
+  Observer,
+  ObserveOptions,
   VirtualHolder,
   NodeCreatorFn,
   Instantiator
@@ -381,17 +383,8 @@ export class Service {
     return serv as S
   }
 
-  public observe<A, B, C, D, E, F, G, H, I>(a: O<A>, b: O<B>, c: O<C>, d: O<D>, e: O<E>, f: O<F>, g: O<G>, h: O<H>, i: O<I>, cbk: (a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H, i: I) => any): this;
-  public observe<A, B, C, D, E, F, G, H>(a: O<A>, b: O<B>, c: O<C>, d: O<D>, e: O<E>, f: O<F>, g: O<G>, h: O<H>, cbk: (a: A, b: B, c: C, d: D, e: E, f: F, g: G, h: H) => any): this;
-  public observe<A, B, C, D, E, F, G>(a: O<A>, b: O<B>, c: O<C>, d: O<D>, e: O<E>, f: O<F>, g: O<G>, cbk: (a: A, b: B, c: C, d: D, e: E, f: F, g: G) => any): this;
-  public observe<A, B, C, D, E, F>(a: O<A>, b: O<B>, c: O<C>, d: O<D>, e: O<E>, f: O<F>, cbk: (a: A, b: B, c: C, d: D, e: E, f: F) => any): this;
-  public observe<A, B, C, D, E>(a: O<A>, b: O<B>, c: O<C>, d: O<D>, e: O<E>, cbk: (a: A, b: B, c: C, d: D, e: E) => any): this;
-  public observe<A, B, C, D>(a: O<A>, b: O<B>, c: O<C>, d: O<D>, cbk: (a: A, b: B, c: C, d: D) => any): this;
-  public observe<A, B, C>(a: O<A>, b: O<B>, c: O<C>, cbk: (a: A, b: B, c: C) => any): this;
-  public observe<A, B>(a: O<A>, b: O<B>, cbk: (a: A, b: B) => any): this;
-  public observe<A>(a: O<A>, cbk: (a: A, prop?: string) => any): this;
-  public observe(...params: any[]): this {
-    let unreg = (o.observe as any)(...params)
+  public observe<T>(a: MaybeObservable<T>, cbk: Observer<T>, options?: ObserveOptions): this {
+    let unreg = o.observe(a, cbk, options)
     this.ondestroy.push(unreg)
     return this
   }
