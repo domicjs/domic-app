@@ -496,30 +496,30 @@ export type Block = {
 /**
  *
  */
-export class DisplayBlockAtom extends VirtualHolder {
+export class BlockDisplayer extends VirtualHolder {
 
-  attrs: {
-    block: Block
-  }
+  // attrs: {
+  //   block: Block
+  // }
 
   current_view: View
   current_deps: Set<Service>
-  name = `block ${this.attrs.block._name}`
+  name = `block ${this.block._name}`
 
-  render() {
-    this.observe(this.attrs.block.app.o_services, services => {
+  constructor(public block: Block) {
+    super()
+
+    this.observe(this.block.app.o_services, services => {
       if (!app.current_screen) return
       this.update(app)
     })
-
-    return super.render()
   }
 
 
   update(app: App): void {
     // FIXME : check if the view has had changes in services or if
     // the view object has changed.
-    let view = app.current_screen.blocks.get(this.attrs.block)
+    let view = app.current_screen.blocks.get(this.block)
 
     if (!view)
       return this.updateChildren(null)
@@ -555,5 +555,8 @@ export class DisplayBlockAtom extends VirtualHolder {
  * Display a Block into the Tree
  */
 export function DisplayBlock(block: Block): Node {
-  return d(DisplayBlockAtom, {block})
+  var comment = document.createComment('  DisplayBlock  ')
+  var displayer = new BlockDisplayer(block)
+  displayer.bindToNode(comment)
+  return comment
 }
