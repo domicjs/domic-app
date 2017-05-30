@@ -347,7 +347,7 @@ export class Service {
   // static with<Z, A, B>(this: new (app: App, a: A, b: B) => Z, a: A, b: B): ServiceConfig;
   // static with<Z, A>(this: new (app: App, a: A) => Z, a: A): ServiceConfig;
   // static with(...a: any[]) {
-  static initWith<C>(this: HasConfig<C>, config: C) {
+  static conf<C>(this: HasConfig<C>, config: C) {
     return new ServiceConfig(this as any, config)
   }
 
