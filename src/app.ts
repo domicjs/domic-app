@@ -507,7 +507,7 @@ export class BlockDisplayer extends VirtualHolder {
   name = `block ${this.block._name}`
 
   constructor(public block: Block) {
-    super()
+    super('block')
 
     this.observe(this.block.app.o_services, services => {
       if (!app.current_screen) return
