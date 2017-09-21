@@ -2,16 +2,17 @@
 import {
   d,
   o,
-  onrender,
   MaybeObservable,
+  make_observer,
   Observable,
-  Observer,
-  ObserveOptions,
+  ObserverFunction,
+  ObserverOptions,
   VirtualHolder,
-  NodeCreatorFn,
-  Instantiator
+  NodeCreatorFn
 } from 'domic'
 
+
+export type Instantiator<T> = new (...a: any[]) => T
 
 /**
  *
@@ -383,9 +384,11 @@ export class Service {
     return serv as S
   }
 
-  public observe<T>(a: MaybeObservable<T>, cbk: Observer<T>, options?: ObserveOptions): this {
-    let unreg = o.observe(a, cbk, options)
-    this.ondestroy.push(unreg)
+  public observe<T>(a: MaybeObservable<T>, cbk: ObserverFunction<T, any>, options?: ObserverOptions): this {
+    let obs = make_observer(o(a), cbk, options)
+    obs.startObserving()
+    this.ondestroy.push(() => obs.stopObserving())
+
     return this
   }
 
@@ -557,6 +560,6 @@ export class BlockDisplayer extends VirtualHolder {
 export function DisplayBlock(block: Block): Node {
   var comment = document.createComment('  DisplayBlock  ')
   var displayer = new BlockDisplayer(block)
-  displayer.bindToNode(comment)
+  displayer.addToNode(comment)
   return comment
 }
