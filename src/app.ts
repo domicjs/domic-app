@@ -3,7 +3,6 @@ import {
   d,
   o,
   MaybeObservable,
-  make_observer,
   Observable,
   ObserverFunction,
   ObserverOptions,
@@ -385,7 +384,7 @@ export class Service {
   }
 
   public observe<T>(a: MaybeObservable<T>, cbk: ObserverFunction<T, any>, options?: ObserverOptions): this {
-    let obs = make_observer(o(a), cbk, options)
+    let obs = o(a).createObserver(cbk, options)
     obs.startObserving()
     this.ondestroy.push(() => obs.stopObserving())
 
