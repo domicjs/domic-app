@@ -5,7 +5,6 @@ import {
   MaybeObservable,
   Observable,
   ObserverFunction,
-  ObserverOptions,
   VirtualHolder,
   NodeCreatorFn
 } from 'domic'
@@ -383,8 +382,8 @@ export class Service {
     return serv as S
   }
 
-  public observe<T>(a: MaybeObservable<T>, cbk: ObserverFunction<T, any>, options?: ObserverOptions): this {
-    let obs = o(a).createObserver(cbk, options)
+  public observe<T>(a: MaybeObservable<T>, cbk: ObserverFunction<T, any>): this {
+    let obs = o(a).createObserver(cbk)
     obs.startObserving()
     this.ondestroy.push(() => obs.stopObserving())
 
